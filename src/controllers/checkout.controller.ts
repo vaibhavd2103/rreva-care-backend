@@ -42,7 +42,7 @@ export async function createCheckoutSession(req: any, res: any) {
         product_data: {
           name: p.name,
           description: p.description ?? undefined,
-          images: p.imageUrl ? [p.imageUrl] : undefined,
+          images: p.imageUrls.length > 0 ? p.imageUrls : undefined,
         },
       },
     };
