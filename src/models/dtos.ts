@@ -4,7 +4,7 @@
 export type PublicUserDTO = {
   id: string;
   email: string;
-  role: 'ADMIN' | 'CUSTOMER';
+  role: "ADMIN" | "CUSTOMER";
   name?: string | null;
   profileImageUrl?: string | null;
 };
@@ -13,7 +13,7 @@ export type ProductDTO = {
   id: string;
   name: string;
   description?: string | null;
-  priceCents: number;
+  price: number;
   currency: string;
   isActive: boolean;
 };
