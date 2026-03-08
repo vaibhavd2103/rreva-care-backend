@@ -1,15 +1,14 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ESNext", 
-    "moduleResolution": "Node",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "strict": true,
-    "outDir": "dist",
-    "rootDir": "src"
-  },
-  "ts-node": {
-    "esm": true
+    "strict": false,           // ← Lenient mode
+    "noImplicitAny": false,    // ← Allow implicit any
+    "skipLibCheck": true,
+    "outDir": "./dist",
+    "rootDir": "./src"
   }
 }

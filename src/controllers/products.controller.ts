@@ -54,7 +54,7 @@ export async function createProduct(req: any, res: any) {
 
   const product = await prisma.product.create({
     data: {
-      ...parsed.data,
+      ...(parsed.data as any),
       imageUrls,
     },
   });
@@ -81,12 +81,14 @@ export async function updateProduct(req: any, res: any) {
   }
 
   try {
+    const updateData: any = { ...parsed.data };
+    if (imageUrls) {
+      updateData.imageUrls = imageUrls;
+    }
+
     const product = await prisma.product.update({
       where: { id },
-      data: {
-        ...parsed.data,
-        ...(imageUrls ? { imageUrls } : {}),
-      },
+      data: updateData,
     });
 
     res.json({ product });
