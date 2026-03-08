@@ -67,7 +67,7 @@ export async function createCheckoutSession(req: any, res: any) {
           return {
             productId: p.id,
             quantity: i.quantity,
-            unitprice: p.price,
+            unitPrice: p.price,
             nameSnapshot: p.name,
           };
         }),
