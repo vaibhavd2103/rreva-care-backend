@@ -1,3 +1,11 @@
+## [1.0.1](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.0.0...v1.0.1) (2026-03-08)
+
+
+### Bug Fixes
+
+* ci-release-deploy pipeline ([6742dcd](https://github.com/vaibhavd2103/rreva-care-backend/commit/6742dcdf622441b751306c24872ee987591adf6e))
+* pipeline and linting commands and package,json ([4656fd3](https://github.com/vaibhavd2103/rreva-care-backend/commit/4656fd394acd388757674e68efa9b2a0ef865c83))
+
 # 1.0.0 (2026-03-08)
 
 
