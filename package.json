@@ -1,7 +1,6 @@
 {
   "name": "rreva-backend",
   "version": "1.0.0",
-  "type": "module",
   "private": true,
   "description": "Node.js + Express + TypeScript + Prisma (MongoDB) backend for RREVA.",
   "main": "dist/server.js",
