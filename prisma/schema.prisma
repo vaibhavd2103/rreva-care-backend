@@ -37,6 +37,8 @@ model User {
   address         String?  @default("")
   orders          Order[]
   phoneNumber     String?  @default("")
+  reviews         Review[]
+  cart            Cart?
 }
 
 model Product {
@@ -49,46 +51,79 @@ model Product {
   isActive    Boolean     @default(true)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+  ingredients String[]    @default([])
+  benefits    String[]    @default([])
+  howToUse    String[]    @default([])
   orderItems  OrderItem[]
+  reviews     Review[]
+  cartItems   CartItem[]
 }
 
 model Order {
-  id     String @id @default(auto()) @map("_id") @db.ObjectId
-  userId String @db.ObjectId
-  user   User   @relation(fields: [userId], references: [id])
-
-  status        OrderStatus   @default(PENDING_PAYMENT)
-  paymentStatus PaymentStatus @default(UNPAID)
-
-  totalPrice Int
-  currency   String @default("inr")
-
-  stripeSessionId       String? @unique
+  id                    String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId                String        @db.ObjectId
+  user                  User          @relation(fields: [userId], references: [id])
+  status                OrderStatus   @default(PENDING_PAYMENT)
+  paymentStatus         PaymentStatus @default(UNPAID)
+  totalPrice            Int
+  currency              String        @default("inr")
+  stripeSessionId       String?       @unique
   stripePaymentIntentId String?
-
-  items OrderItem[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  items                 OrderItem[]
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
 
   @@index([userId])
   @@index([status])
 }
 
 model OrderItem {
-  id        String @id @default(auto()) @map("_id") @db.ObjectId
-  orderId   String @db.ObjectId
-  productId String @db.ObjectId
-
-  order   Order   @relation(fields: [orderId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
-
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId      String   @db.ObjectId
+  productId    String   @db.ObjectId
+  order        Order    @relation(fields: [orderId], references: [id])
+  product      Product  @relation(fields: [productId], references: [id])
   quantity     Int
-  unitprice    Int
+  unitPrice    Int
   nameSnapshot String
-
-  createdAt DateTime @default(now())
+  createdAt    DateTime @default(now())
 
   @@index([orderId])
+  @@index([productId])
+}
+
+model Review {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @db.ObjectId
+  productId String   @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([productId])
+}
+
+model Cart {
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String     @unique @db.ObjectId
+  user      User       @relation(fields: [userId], references: [id])
+  items     CartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  cartId    String   @db.ObjectId
+  productId String   @db.ObjectId
+  cart      Cart     @relation(fields: [cartId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  createdAt DateTime @default(now())
+
+  @@index([cartId])
   @@index([productId])
 }

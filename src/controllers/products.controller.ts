@@ -9,6 +9,9 @@ const CreateSchema = z.object({
   price: z.coerce.number().int().positive(),
   currency: z.string().min(3).max(3).default("INR"),
   isActive: z.coerce.boolean().optional(),
+  ingredients: z.array(z.string()).optional().default([]),
+  benefits: z.array(z.string()).optional().default([]),
+  howToUse: z.array(z.string()).optional().default([]),
 });
 
 const UpdateSchema = CreateSchema.partial();
