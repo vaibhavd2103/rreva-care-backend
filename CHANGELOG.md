@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.0.1...v1.0.2) (2026-03-08)
+
+
+### Bug Fixes
+
+* added reviews, ingredients, hot to use and benefits to products and cart model for user ([1f358c0](https://github.com/vaibhavd2103/rreva-care-backend/commit/1f358c06f3314ef6f51454e04bd5ea61798ea4da))
+
 ## [1.0.1](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.0.0...v1.0.1) (2026-03-08)
 
 
