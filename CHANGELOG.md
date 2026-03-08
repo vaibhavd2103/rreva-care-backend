@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.0.2...v1.0.3) (2026-03-08)
+
+
+### Bug Fixes
+
+* tsconfig and build errors ([d2c8c09](https://github.com/vaibhavd2103/rreva-care-backend/commit/d2c8c097fb057e98f5ebe87b5b8d88c196233142))
+
 ## [1.0.2](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.0.1...v1.0.2) (2026-03-08)
 
 
