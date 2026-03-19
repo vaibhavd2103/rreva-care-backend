@@ -12,6 +12,7 @@ import { checkoutRouter } from "./routes/checkout.routes";
 import { adminOrdersRouter } from "./routes/orders.routes";
 import { myOrdersRouter } from "./routes/orders.routes";
 import { stripeWebhookRouter } from "./routes/stripeWebhook.routes";
+import { cartRouter } from "./routes/cart.routes";
 
 export function createApp() {
   const app = express();
@@ -46,6 +47,7 @@ export function createApp() {
   app.use("/api/checkout", checkoutRouter);
   app.use("/api/orders", myOrdersRouter);
   app.use("/api/admin/orders", adminOrdersRouter);
+  app.use("/api/cart", cartRouter);
 
   app.use(notFound);
   app.use(errorHandler);
