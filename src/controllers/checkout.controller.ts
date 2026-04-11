@@ -9,10 +9,13 @@ const CreateSessionSchema = z.object({
     .array(
       z.object({
         productId: z.string().min(1),
-        quantity: z.number().int().positive().max(99),
+        quantity: z.number().int().positive().min(1),
       }),
     )
     .min(1),
+  totalPrice: z.number().int().positive(),
+  address: z.string().min(1),
+  phoneNumber: z.string().min(10).max(15),
 });
 
 export async function createCheckoutSession(req: any, res: any) {
@@ -48,14 +51,17 @@ export async function createCheckoutSession(req: any, res: any) {
     };
   });
 
-  const totalPrice = parsed.data.items.reduce((sum, i) => {
-    const p = productById.get(i.productId)!;
-    return sum + p.price * i.quantity;
-  }, 0);
+  // const totalPrice = parsed.data.items.reduce((sum, i) => {
+  //   const p = productById.get(i.productId)!;
+  //   return sum + p.price * i.quantity;
+  // }, 0);
+  const totalPrice = parsed.data.totalPrice;
 
   // Create Order first (pending payment)
   const order = await prisma.order.create({
     data: {
+      address: parsed.data.address,
+      phoneNumber: parsed.data.phoneNumber,
       userId,
       status: "PENDING_PAYMENT",
       paymentStatus: "UNPAID",
@@ -75,25 +81,30 @@ export async function createCheckoutSession(req: any, res: any) {
     },
   });
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    success_url: env.STRIPE_SUCCESS_URL,
-    cancel_url: env.STRIPE_CANCEL_URL,
-    customer_email: (await prisma.user.findUnique({ where: { id: userId } }))
-      ?.email,
-    line_items,
-    metadata: {
-      orderId: order.id,
-    },
-  });
-
-  await prisma.order.update({
-    where: { id: order.id },
-    data: { stripeSessionId: session.id },
-  });
-
-  res.status(201).json({
+  return res.status(201).json({
     orderId: order.id,
-    checkoutUrl: session.url,
+    message: "Order created. Proceed to payment.",
   });
+
+  // const session = await stripe.checkout.sessions.create({
+  //   mode: "payment",
+  //   success_url: env.STRIPE_SUCCESS_URL,
+  //   cancel_url: env.STRIPE_CANCEL_URL,
+  //   customer_email: (await prisma.user.findUnique({ where: { id: userId } }))
+  //     ?.email,
+  //   line_items,
+  //   metadata: {
+  //     orderId: order.id,
+  //   },
+  // });
+
+  // await prisma.order.update({
+  //   where: { id: order.id },
+  //   data: { stripeSessionId: session.id },
+  // });
+
+  // res.status(201).json({
+  //   orderId: order.id,
+  //   checkoutUrl: session.url,
+  // });
 }

@@ -16,7 +16,7 @@ cartRouter.post(
   asyncHandler(addCartProduct),
 );
 
-cartRouter.post(
+cartRouter.delete(
   "/itemsRemove",
   authRequired,
   requireRole("CUSTOMER"),
