@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.1.0...v1.2.0) (2026-04-11)
+
+
+### Features
+
+* cart and orders controller ([14717ba](https://github.com/vaibhavd2103/rreva-care-backend/commit/14717bac71beb2c13fa1ca2351ef2873ed946464))
+
 # [1.1.0](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.0.3...v1.1.0) (2026-03-19)
 
 
