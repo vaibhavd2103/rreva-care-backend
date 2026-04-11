@@ -6,6 +6,8 @@ import {
   adminListOrders,
   adminApproveOrder,
   adminPlaceOrder,
+  rejectPayment,
+  updateOrderStatus,
 } from "../controllers/orders.controller";
 
 export const adminOrdersRouter = Router();
@@ -16,17 +18,33 @@ adminOrdersRouter.get(
   requireRole("ADMIN"),
   asyncHandler(adminListOrders),
 );
+
 adminOrdersRouter.patch(
   "/:id/approve",
   authRequired,
   requireRole("ADMIN"),
   asyncHandler(adminApproveOrder),
 );
+
 adminOrdersRouter.patch(
   "/:id/place",
   authRequired,
   requireRole("ADMIN"),
   asyncHandler(adminPlaceOrder),
+);
+
+adminOrdersRouter.patch(
+  "/:id/rejectPayment",
+  authRequired,
+  requireRole("ADMIN"),
+  asyncHandler(rejectPayment),
+);
+
+adminOrdersRouter.patch(
+  "/:id/updateOrderStatus/:status",
+  authRequired,
+  requireRole("ADMIN"),
+  asyncHandler(updateOrderStatus),
 );
 
 // Customer route mounted under /api/admin/orders is not ideal; keep customer routes separate:
