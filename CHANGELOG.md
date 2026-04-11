@@ -1,3 +1,11 @@
+## [1.2.1](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.2.0...v1.2.1) (2026-04-11)
+
+
+### Bug Fixes
+
+* order status update ([262a09e](https://github.com/vaibhavd2103/rreva-care-backend/commit/262a09e84887205a06a48b8081629a32369714dc))
+* update product api for handling images and other updates ([149aba5](https://github.com/vaibhavd2103/rreva-care-backend/commit/149aba5f910806e7889bab0c24051439cf980f4e))
+
 # [1.2.0](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.1.0...v1.2.0) (2026-04-11)
 
 
