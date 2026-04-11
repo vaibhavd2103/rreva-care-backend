@@ -26,6 +26,7 @@ productRouter.put(
   "/:id",
   authRequired,
   requireRole("ADMIN"),
+  upload.array("images", 5),
   asyncHandler(updateProduct),
 );
 productRouter.delete(

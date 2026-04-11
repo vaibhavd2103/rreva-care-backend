@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { ApiError } from "../utils/http";
-import { uploadBufferToCloudinary } from "../services/cloudinary";
+import {
+  deleteFromCloudinary,
+  uploadBufferToCloudinary,
+} from "../services/cloudinary";
 
 const CreateSchema = z.object({
   name: z.string().min(1),
@@ -14,7 +17,19 @@ const CreateSchema = z.object({
   howToUse: z.array(z.string()).optional().default([]),
 });
 
-const UpdateSchema = CreateSchema.partial();
+const UpdateSchema = CreateSchema.partial().extend({
+  // The client echoes back whichever existing Cloudinary URLs it wants to
+  // keep. Omitting this field entirely means "don't touch images at all".
+  // multipart/form-data may send a single string or a repeated array —
+  // the transform normalises both into string[] | undefined.
+  existingImageUrls: z
+    .union([z.array(z.string().url()), z.string().url()])
+    .optional()
+    .transform((val) => {
+      if (val === undefined) return undefined;
+      return Array.isArray(val) ? val : [val];
+    }),
+});
 
 export async function listProducts(_req: any, res: any) {
   const products = await prisma.product.findMany({
@@ -70,19 +85,53 @@ export async function updateProduct(req: any, res: any) {
     throw new ApiError(400, "Invalid payload", parsed.error.flatten());
   }
 
+  const { existingImageUrls, ...fields } = parsed.data;
+  console.log("parsed update product:", parsed.data);
+
   const files = req.files as Express.Multer.File[] | undefined;
+  const hasNewFiles = files && files.length > 0;
+  const hasImageUpdate = existingImageUrls !== undefined || hasNewFiles;
 
   let imageUrls: string[] | undefined = undefined;
 
-  if (files && files.length > 0) {
-    imageUrls = await Promise.all(
-      files.map((file) => uploadBufferToCloudinary(file.buffer, "products")),
+  if (hasImageUpdate) {
+    const keptUrls = existingImageUrls ?? [];
+
+    // Fetch the current product to diff which URLs were removed.
+    const current = await prisma.product.findUnique({
+      where: { id },
+      select: { imageUrls: true },
+    });
+
+    if (!current) throw new ApiError(404, "Product not found");
+
+    // Any URL that was stored but is no longer in keptUrls was deleted.
+    const deletedUrls = current.imageUrls.filter(
+      (url) => !keptUrls.includes(url),
     );
+
+    // Fire-and-forget Cloudinary deletes — don't block the response on this.
+    // If a delete fails it's non-critical; you can log and handle separately.
+    if (deletedUrls.length > 0) {
+      Promise.all(deletedUrls.map(deleteFromCloudinary)).catch((err) =>
+        console.error("Cloudinary cleanup failed:", err),
+      );
+    }
+
+    const uploadedUrls = hasNewFiles
+      ? await Promise.all(
+          files!.map((file) =>
+            uploadBufferToCloudinary(file.buffer, "products"),
+          ),
+        )
+      : [];
+
+    imageUrls = [...keptUrls, ...uploadedUrls];
   }
 
   try {
-    const updateData: any = { ...parsed.data };
-    if (imageUrls) {
+    const updateData: any = { ...fields };
+    if (imageUrls !== undefined) {
       updateData.imageUrls = imageUrls;
     }
 
