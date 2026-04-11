@@ -72,6 +72,8 @@ model Order {
   items                 OrderItem[]
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
+  address               String
+  phoneNumber           String
 
   @@index([userId])
   @@index([status])

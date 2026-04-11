@@ -17,7 +17,7 @@ const AddCartProductSchema = z.object({
 
 const RemoveCartProductSchema = z.object({
   productId: z.string().min(1, "productId is required"),
-  quantity: z.number().int().positive().default(1),
+  quantity: z.number().int().min(0, "Quantity must be 0 or greater").default(1),
 });
 
 async function getOrCreateCart(userId: string) {
@@ -27,7 +27,7 @@ async function getOrCreateCart(userId: string) {
 
   if (!cart) {
     cart = await prisma.cart.create({
-      data: { userId },
+      data: { userId, items: { create: [] } },
     });
   }
 
@@ -72,7 +72,8 @@ export async function addCartProduct(req: AuthRequest, res: Response) {
     await prisma.cartItem.update({
       where: { id: existingItem.id },
       data: {
-        quantity: existingItem.quantity + quantity,
+        // quantity: existingItem.quantity + quantity,
+        quantity: quantity, // Set to the new quantity instead of adding
       },
     });
   } else {
@@ -149,7 +150,7 @@ export async function removeCartProduct(req: AuthRequest, res: Response) {
     throw new ApiError(404, "Product not found in cart");
   }
 
-  if (existingItem.quantity <= quantity) {
+  if (quantity == 0) {
     await prisma.cartItem.delete({
       where: { id: existingItem.id },
     });
@@ -157,7 +158,7 @@ export async function removeCartProduct(req: AuthRequest, res: Response) {
     await prisma.cartItem.update({
       where: { id: existingItem.id },
       data: {
-        quantity: existingItem.quantity - quantity,
+        quantity: quantity,
       },
     });
   }
