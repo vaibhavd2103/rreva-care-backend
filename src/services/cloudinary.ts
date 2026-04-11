@@ -36,3 +36,15 @@ export function uploadBufferToCloudinary(
     streamifier.createReadStream(buffer).pipe(stream);
   });
 }
+
+export async function deleteFromCloudinary(url: string): Promise<void> {
+  // Extract the public_id from the Cloudinary URL.
+  // A typical URL looks like:
+  // https://res.cloudinary.com/<cloud>/image/upload/v1234567890/products/abc123.jpg
+  // The public_id is everything after /upload/vXXXX/ → "products/abc123"
+  const match = url.match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[^.]+)?$/);
+  if (!match) return; // not a cloudinary URL, skip
+
+  const publicId = match[1]; // e.g. "products/abc123"
+  await cloudinary.uploader.destroy(publicId);
+}

@@ -40,7 +40,7 @@ export async function adminPlaceOrder(req: any, res: any) {
 
   const updated = await prisma.order.update({
     where: { id },
-    data: { status: "PLACED" },
+    data: { status: "PLACED", paymentStatus: "PAID" },
     include: {
       user: { select: { id: true, email: true, name: true } },
       items: true,
@@ -67,5 +67,52 @@ export async function adminApproveOrder(req: any, res: any) {
     },
   });
 
+  res.json({ order: updated });
+}
+
+export async function rejectPayment(req: any, res: any) {
+  const { id } = req.params;
+  const order = await prisma.order.findUnique({ where: { id } });
+  if (!order) throw new ApiError(404, "Order not found");
+  // if (order.status !== "PLACED")
+  //   throw new ApiError(400, "Only PLACED orders can have payment rejected");
+  const updated = await prisma.order.update({
+    where: { id },
+    data: { paymentStatus: "UNPAID", status: "PENDING_PAYMENT" },
+    include: {
+      user: { select: { id: true, email: true, name: true } },
+      items: true,
+    },
+  });
+  res.json({ order: updated });
+}
+
+export async function updateOrderStatus(req: any, res: any) {
+  const { id, status } = req.params;
+  if (
+    ![
+      "PENDING_PAYMENT",
+      "PLACED",
+      "APPROVED",
+      "CANCELLED",
+      "SHIPPED",
+      "DELIVERED",
+    ].includes(status)
+  ) {
+    throw new ApiError(400, "Invalid status");
+  }
+  const order = await prisma.order.findUnique({ where: { id } });
+  if (!order) throw new ApiError(404, "Order not found");
+  if (order.status == status) {
+    throw new ApiError(400, "Order status is already updated");
+  }
+  const updated = await prisma.order.update({
+    where: { id },
+    data: { status },
+    include: {
+      user: { select: { id: true, email: true, name: true } },
+      items: true,
+    },
+  });
   res.json({ order: updated });
 }
