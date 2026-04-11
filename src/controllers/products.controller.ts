@@ -159,3 +159,48 @@ export async function deleteProduct(req: any, res: any) {
     throw new ApiError(404, "Product not found");
   }
 }
+
+export async function updateProductReview(req: any, res: any) {
+  const { id } = req.params;
+  const userId = req.user.id;
+  const ReviewSchema = z.object({
+    rating: z.number().int().min(1).max(5),
+    comment: z.string().min(1).max(1000).optional(),
+  });
+  const parsed = ReviewSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new ApiError(400, "Invalid payload", parsed.error.flatten());
+  }
+  const { rating, comment } = parsed.data;
+  const review = await prisma.review.findUnique({
+    where: { id, userId },
+  });
+  if (review) {
+    throw new ApiError(400, "Review already exists");
+  }
+  const newReview = await prisma.review.create({
+    data: {
+      productId: id,
+      userId,
+      rating,
+      comment,
+    },
+  });
+  res.status(201).json({ review: newReview });
+}
+
+export async function getProductReviews(req: any, res: any) {
+  const { id } = req.params;
+  const reviews = await prisma.review.findMany({
+    where: { productId: id },
+    include: { user: { select: { id: true, name: true } } },
+  });
+  res.json({ reviews });
+}
+
+export async function getReviews(req: any, res: any) {
+  const reviews = await prisma.review.findMany({
+    include: { user: { select: { id: true, name: true } } },
+  });
+  res.json({ reviews });
+}
