@@ -1,3 +1,15 @@
+# [1.3.0](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.2.2...v1.3.0) (2026-04-12)
+
+
+### Bug Fixes
+
+* unique constraint on stripe session id ([7362216](https://github.com/vaibhavd2103/rreva-care-backend/commit/7362216c95f21cf028a7db6688797af14b8693bd))
+
+
+### Features
+
+* mrp attribute for product and rm auth for getReviews ([eca0b04](https://github.com/vaibhavd2103/rreva-care-backend/commit/eca0b04f10b4009d204853f9452765c7cb4421ab))
+
 ## [1.2.2](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.2.1...v1.2.2) (2026-04-11)
 
 
