@@ -69,7 +69,7 @@ model Order {
   paymentStatus         PaymentStatus @default(UNPAID)
   totalPrice            Int
   currency              String        @default("inr")
-  stripeSessionId       String?       @unique
+  stripeSessionId       String?
   stripePaymentIntentId String?
   items                 OrderItem[]
   createdAt             DateTime      @default(now())
