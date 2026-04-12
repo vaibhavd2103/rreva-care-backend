@@ -10,6 +10,7 @@ const CreateSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(10),
   price: z.coerce.number().int().positive(),
+  mrp: z.coerce.number().int().positive(),
   currency: z.string().min(3).max(3).default("INR"),
   isActive: z.coerce.boolean().optional(),
   ingredients: z.array(z.string()).optional().default([]),

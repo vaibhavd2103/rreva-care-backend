@@ -48,6 +48,7 @@ model Product {
   name        String
   description String?
   price       Int
+  mrp         Int         @default(0)
   currency    String      @default("inr")
   imageUrls   String[]    @default([])
   isActive    Boolean     @default(true)
@@ -69,7 +70,7 @@ model Order {
   paymentStatus         PaymentStatus @default(UNPAID)
   totalPrice            Int
   currency              String        @default("inr")
-  stripeSessionId       String?       @unique
+  stripeSessionId       String?
   stripePaymentIntentId String?
   items                 OrderItem[]
   createdAt             DateTime      @default(now())
