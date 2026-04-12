@@ -48,6 +48,7 @@ model Product {
   name        String
   description String?
   price       Int
+  mrp         Int         @default(0)
   currency    String      @default("inr")
   imageUrls   String[]    @default([])
   isActive    Boolean     @default(true)

@@ -21,6 +21,8 @@ productRouter.get("/", asyncHandler(listProducts));
 
 productRouter.get("/:id", asyncHandler(getProduct));
 
+productRouter.get("/:id/reviews", asyncHandler(getProductReviews));
+
 productRouter.post(
   "/",
   authRequired,
@@ -49,11 +51,4 @@ productRouter.post(
   authRequired,
   requireRole("CUSTOMER"),
   asyncHandler(updateProductReview),
-);
-
-productRouter.get(
-  "/:id/reviews",
-  authRequired,
-  requireRole("CUSTOMER"),
-  asyncHandler(getProductReviews),
 );
