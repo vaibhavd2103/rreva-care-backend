@@ -1,7 +1,12 @@
 node_modules
 dist
+.git
+.github
+.vscode
 .env
 .env.*
 !.env.example
-prisma/dev.db
+*.md
+Dockerfile
+.dockerignore
 coverage

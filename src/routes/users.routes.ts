@@ -1,26 +1,11 @@
 import { Router } from "express";
-import multer from "multer";
-
 import { asyncHandler } from "../utils/http";
 import { authRequired } from "../middlewares/auth";
-import {
-  getMe,
-  updateProfile,
-  // uploadProfilePhoto,
-} from "../controllers/users.controller";
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-});
+import { getMe, updateProfile } from "../controllers/users.controller";
 
 export const userRouter = Router();
 
 userRouter.get("/me", authRequired, asyncHandler(getMe));
-// userRouter.put(
-//   "/me/profile-photo",
-//   authRequired,
-//   upload.single("file"),
-//   asyncHandler(uploadProfilePhoto),
-// );
 userRouter.post("/update", authRequired, asyncHandler(updateProfile));
+// Also expose the RESTful form of the same operation.
+userRouter.put("/me", authRequired, asyncHandler(updateProfile));

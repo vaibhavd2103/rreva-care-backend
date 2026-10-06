@@ -1,36 +1,57 @@
+import type { Request, Response } from "express";
 import bcrypt from "bcryptjs";
-import jwt, { Secret, SignOptions } from "jsonwebtoken";
+import jwt from "jsonwebtoken";
+import type { SignOptions } from "jsonwebtoken";
 import { z } from "zod";
+import type { Role, User } from "@prisma/client";
 
 import { prisma } from "../db/prisma";
 import { env } from "../config/env";
-import { ApiError } from "../utils/http";
+import { ApiError, parseOrThrow } from "../utils/http";
+
+const EmailSchema = z.string().trim().toLowerCase().email();
 
 const SignupSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
+  email: EmailSchema,
+  password: z.string().min(8).max(72), // bcrypt ignores bytes beyond 72
   name: z.string().min(1).optional(),
   address: z.string().min(1).optional(),
   phoneNumber: z.string().min(10).optional(),
 });
 
 const LoginSchema = z.object({
-  email: z.string().email(),
+  email: EmailSchema,
   password: z.string().min(1),
 });
 
-function signToken(payload: { sub: string; role: "ADMIN" | "CUSTOMER" }) {
-  const secret: Secret = env.JWT_SECRET;
-  const options: SignOptions = { expiresIn: env.JWT_EXPIRES_IN as any };
-  return jwt.sign(payload, secret, options);
+// Compared against when the email is unknown so response time doesn't reveal it.
+const DUMMY_HASH = bcrypt.hashSync("not-a-real-password", 12);
+
+function signToken(payload: { sub: string; role: Role }): string {
+  const options: SignOptions = {
+    expiresIn: env.JWT_EXPIRES_IN as SignOptions["expiresIn"],
+    algorithm: "HS256",
+  };
+  return jwt.sign(payload, env.JWT_SECRET, options);
 }
 
-export async function signup(req: any, res: any) {
-  const body = SignupSchema.safeParse(req.body);
-  if (!body.success)
-    throw new ApiError(400, "Invalid payload", body.error.flatten());
+function publicUser(user: User) {
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    name: user.name,
+    profileImageUrl: user.profileImageUrl,
+    address: user.address,
+    phoneNumber: user.phoneNumber,
+  };
+}
 
-  const { email, password, name, address, phoneNumber } = body.data;
+export async function signup(req: Request, res: Response): Promise<void> {
+  const { email, password, name, address, phoneNumber } = parseOrThrow(
+    SignupSchema,
+    req.body,
+  );
 
   const exists = await prisma.user.findUnique({ where: { email } });
   if (exists) throw new ApiError(409, "Email already registered");
@@ -41,44 +62,16 @@ export async function signup(req: any, res: any) {
   });
 
   const token = signToken({ sub: user.id, role: user.role });
-
-  res.status(201).json({
-    token,
-    user: {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      name: user.name,
-      profileImageUrl: user.profileImageUrl,
-      address: user.address,
-      phoneNumber: user.phoneNumber,
-    },
-  });
+  res.status(201).json({ token, user: publicUser(user) });
 }
 
-export async function login(req: any, res: any) {
-  const body = LoginSchema.safeParse(req.body);
-  if (!body.success)
-    throw new ApiError(400, "Invalid payload", body.error.flatten());
-
-  const { email, password } = body.data;
+export async function login(req: Request, res: Response): Promise<void> {
+  const { email, password } = parseOrThrow(LoginSchema, req.body);
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) throw new ApiError(401, "Invalid credentials");
-
-  const ok = await bcrypt.compare(password, user.passwordHash);
-  if (!ok) throw new ApiError(401, "Invalid credentials");
+  const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
+  if (!user || !ok) throw new ApiError(401, "Invalid credentials");
 
   const token = signToken({ sub: user.id, role: user.role });
-
-  res.json({
-    token,
-    user: {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      name: user.name,
-      profileImageUrl: user.profileImageUrl,
-    },
-  });
+  res.json({ token, user: publicUser(user) });
 }

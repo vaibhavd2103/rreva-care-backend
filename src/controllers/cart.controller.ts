@@ -1,14 +1,12 @@
-import { Request, Response } from "express";
+import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
-import { ApiError } from "../utils/http";
-
-type AuthRequest = Request & {
-  user?: {
-    id: string;
-    role: "ADMIN" | "CUSTOMER";
-  };
-};
+import {
+  ApiError,
+  parseObjectId,
+  parseOrThrow,
+  requireUser,
+} from "../utils/http";
 
 const AddCartProductSchema = z.object({
   productId: z.string().min(1, "productId is required"),
@@ -20,220 +18,110 @@ const RemoveCartProductSchema = z.object({
   quantity: z.number().int().min(0, "Quantity must be 0 or greater").default(1),
 });
 
+const cartInclude = { items: { include: { product: true } } } as const;
+
 async function getOrCreateCart(userId: string) {
-  let cart = await prisma.cart.findUnique({
-    where: { userId },
-  });
-
-  if (!cart) {
-    cart = await prisma.cart.create({
-      data: { userId, items: { create: [] } },
-    });
+  const existing = await prisma.cart.findUnique({ where: { userId } });
+  if (existing) return existing;
+  try {
+    return await prisma.cart.create({ data: { userId } });
+  } catch {
+    // Concurrent request created it first (unique userId).
+    const cart = await prisma.cart.findUnique({ where: { userId } });
+    if (!cart) throw new ApiError(500, "Could not create cart");
+    return cart;
   }
-
-  return cart;
 }
 
-export async function addCartProduct(req: AuthRequest, res: Response) {
-  const userId = req.user?.id;
-  if (!userId) throw new ApiError(401, "Unauthorized");
+async function loadCartWithSummary(cartId: string) {
+  const cart = await prisma.cart.findUnique({
+    where: { id: cartId },
+    include: cartInclude,
+  });
+  const items = cart?.items ?? [];
+  return {
+    cart,
+    summary: {
+      totalItems: items.reduce((sum, item) => sum + item.quantity, 0),
+      totalPrice: items.reduce(
+        (sum, item) => sum + item.quantity * item.product.price,
+        0,
+      ),
+      currency: items[0]?.product.currency ?? "inr",
+    },
+  };
+}
 
-  const parsed = AddCartProductSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new ApiError(
-      400,
-      parsed.error.issues[0]?.message || "Invalid request body",
-    );
-  }
-
-  const { productId, quantity } = parsed.data;
+export async function addCartProduct(req: Request, res: Response): Promise<void> {
+  const { id: userId } = requireUser(req);
+  const { productId, quantity } = parseOrThrow(
+    AddCartProductSchema,
+    req.body,
+    "Invalid request body",
+  );
 
   const product = await prisma.product.findFirst({
-    where: {
-      id: productId,
-      isActive: true,
-    },
+    where: { id: parseObjectId(productId, "Product"), isActive: true },
   });
-
-  if (!product) {
-    throw new ApiError(404, "Product not found or inactive");
-  }
+  if (!product) throw new ApiError(404, "Product not found or inactive");
 
   const cart = await getOrCreateCart(userId);
 
-  const existingItem = await prisma.cartItem.findFirst({
-    where: {
-      cartId: cart.id,
-      productId,
-    },
+  // Sets the quantity (not increments) so the client can send the desired total.
+  await prisma.cartItem.upsert({
+    where: { cartId_productId: { cartId: cart.id, productId: product.id } },
+    update: { quantity },
+    create: { cartId: cart.id, productId: product.id, quantity },
   });
-
-  if (existingItem) {
-    await prisma.cartItem.update({
-      where: { id: existingItem.id },
-      data: {
-        // quantity: existingItem.quantity + quantity,
-        quantity: quantity, // Set to the new quantity instead of adding
-      },
-    });
-  } else {
-    await prisma.cartItem.create({
-      data: {
-        cartId: cart.id,
-        productId,
-        quantity,
-      },
-    });
-  }
-
-  const updatedCart = await prisma.cart.findUnique({
-    where: { id: cart.id },
-    include: {
-      items: {
-        include: {
-          product: true,
-        },
-      },
-    },
-  });
-
-  const totalItems =
-    updatedCart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
-
-  const totalPrice =
-    updatedCart?.items.reduce(
-      (sum, item) => sum + item.quantity * item.product.price,
-      0,
-    ) ?? 0;
 
   res.status(200).json({
     message: "Product added to cart",
-    cart: updatedCart,
-    summary: {
-      totalItems,
-      totalPrice,
-      currency: updatedCart?.items[0]?.product.currency ?? "inr",
-    },
+    ...(await loadCartWithSummary(cart.id)),
   });
 }
 
-export async function removeCartProduct(req: AuthRequest, res: Response) {
-  const userId = req.user?.id;
-  if (!userId) throw new ApiError(401, "Unauthorized");
+export async function removeCartProduct(req: Request, res: Response): Promise<void> {
+  const { id: userId } = requireUser(req);
+  const { productId, quantity } = parseOrThrow(
+    RemoveCartProductSchema,
+    req.body,
+    "Invalid request body",
+  );
 
-  const parsed = RemoveCartProductSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new ApiError(
-      400,
-      parsed.error.issues[0]?.message || "Invalid request body",
-    );
-  }
-
-  const { productId, quantity } = parsed.data;
-
-  const cart = await prisma.cart.findUnique({
-    where: { userId },
-  });
-
-  if (!cart) {
-    throw new ApiError(404, "Cart not found");
-  }
+  const cart = await prisma.cart.findUnique({ where: { userId } });
+  if (!cart) throw new ApiError(404, "Cart not found");
 
   const existingItem = await prisma.cartItem.findFirst({
-    where: {
-      cartId: cart.id,
-      productId,
-    },
+    where: { cartId: cart.id, productId: parseObjectId(productId, "Product") },
   });
+  if (!existingItem) throw new ApiError(404, "Product not found in cart");
 
-  if (!existingItem) {
-    throw new ApiError(404, "Product not found in cart");
-  }
-
-  if (quantity == 0) {
-    await prisma.cartItem.delete({
-      where: { id: existingItem.id },
-    });
+  if (quantity === 0) {
+    await prisma.cartItem.delete({ where: { id: existingItem.id } });
   } else {
     await prisma.cartItem.update({
       where: { id: existingItem.id },
-      data: {
-        quantity: quantity,
-      },
+      data: { quantity },
     });
   }
-
-  const updatedCart = await prisma.cart.findUnique({
-    where: { id: cart.id },
-    include: {
-      items: {
-        include: {
-          product: true,
-        },
-      },
-    },
-  });
-
-  const totalItems =
-    updatedCart?.items.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
-
-  const totalPrice =
-    updatedCart?.items.reduce(
-      (sum, item) => sum + item.quantity * item.product.price,
-      0,
-    ) ?? 0;
 
   res.status(200).json({
     message: "Product removed from cart",
-    cart: updatedCart,
-    summary: {
-      totalItems,
-      totalPrice,
-      currency: updatedCart?.items[0]?.product.currency ?? "inr",
-    },
+    ...(await loadCartWithSummary(cart.id)),
   });
 }
 
-export async function getCart(req: AuthRequest, res: Response) {
-  const userId = req.user?.id;
-  if (!userId) throw new ApiError(401, "Unauthorized");
+export async function getCart(req: Request, res: Response): Promise<void> {
+  const { id: userId } = requireUser(req);
 
-  const cart = await prisma.cart.findUnique({
-    where: { userId },
-    include: {
-      items: {
-        include: {
-          product: true,
-        },
-      },
-    },
-  });
-
+  const cart = await prisma.cart.findUnique({ where: { userId } });
   if (!cart) {
-    return res.status(200).json({
-      cart: {
-        items: [],
-      },
-      summary: {
-        totalItems: 0,
-        totalPrice: 0,
-        currency: "inr",
-      },
+    res.status(200).json({
+      cart: { items: [] },
+      summary: { totalItems: 0, totalPrice: 0, currency: "inr" },
     });
+    return;
   }
 
-  const totalItems = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-  const totalPrice = cart.items.reduce(
-    (sum, item) => sum + item.quantity * item.product.price,
-    0,
-  );
-
-  res.status(200).json({
-    cart,
-    summary: {
-      totalItems,
-      totalPrice,
-      currency: cart.items[0]?.product.currency ?? "inr",
-    },
-  });
+  res.status(200).json(await loadCartWithSummary(cart.id));
 }

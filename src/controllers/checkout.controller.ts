@@ -1,30 +1,42 @@
+import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
-import { ApiError } from "../utils/http";
-import { stripe } from "../services/stripe";
-import { env } from "../config/env";
+import {
+  ApiError,
+  parseObjectId,
+  parseOrThrow,
+  requireUser,
+} from "../utils/http";
 
 const CreateSessionSchema = z.object({
   items: z
     .array(
       z.object({
         productId: z.string().min(1),
-        quantity: z.number().int().positive().min(1),
+        quantity: z.number().int().positive(),
       }),
     )
     .min(1),
-  totalPrice: z.number().int().positive(),
   address: z.string().min(1),
   phoneNumber: z.string().min(10).max(15),
 });
 
-export async function createCheckoutSession(req: any, res: any) {
-  const userId = req.user.id;
-  const parsed = CreateSessionSchema.safeParse(req.body);
-  if (!parsed.success)
-    throw new ApiError(400, "Invalid payload", parsed.error.flatten());
+/**
+ * Creates an order in PENDING_PAYMENT state. The total is always computed on the
+ * server from current product prices – any client supplied total is ignored.
+ */
+export async function createCheckoutSession(req: Request, res: Response): Promise<void> {
+  const { id: userId } = requireUser(req);
+  const { items, address, phoneNumber } = parseOrThrow(CreateSessionSchema, req.body);
 
-  const productIds = parsed.data.items.map((i) => i.productId);
+  // Merge duplicate product lines.
+  const quantityByProduct = new Map<string, number>();
+  for (const item of items) {
+    const id = parseObjectId(item.productId, "Product");
+    quantityByProduct.set(id, (quantityByProduct.get(id) ?? 0) + item.quantity);
+  }
+
+  const productIds = [...quantityByProduct.keys()];
   const products = await prisma.product.findMany({
     where: { id: { in: productIds }, isActive: true },
   });
@@ -33,78 +45,40 @@ export async function createCheckoutSession(req: any, res: any) {
     throw new ApiError(400, "One or more products are invalid or inactive");
   }
 
-  const productById = new Map(products.map((p) => [p.id, p] as const));
+  const currency = products[0]?.currency ?? "inr";
+  if (products.some((p) => p.currency.toLowerCase() !== currency.toLowerCase())) {
+    throw new ApiError(400, "All products in an order must share one currency");
+  }
 
-  const line_items = parsed.data.items.map((i) => {
-    const p = productById.get(i.productId)!;
-    return {
-      quantity: i.quantity,
-      price_data: {
-        currency: p.currency,
-        unit_amount: p.price,
-        product_data: {
-          name: p.name,
-          description: p.description ?? undefined,
-          images: p.imageUrls.length > 0 ? p.imageUrls : undefined,
-        },
-      },
-    };
-  });
+  const totalPrice = products.reduce(
+    (sum, p) => sum + p.price * (quantityByProduct.get(p.id) ?? 0),
+    0,
+  );
 
-  // const totalPrice = parsed.data.items.reduce((sum, i) => {
-  //   const p = productById.get(i.productId)!;
-  //   return sum + p.price * i.quantity;
-  // }, 0);
-  const totalPrice = parsed.data.totalPrice;
-
-  // Create Order first (pending payment)
   const order = await prisma.order.create({
     data: {
-      address: parsed.data.address,
-      phoneNumber: parsed.data.phoneNumber,
+      address,
+      phoneNumber,
       userId,
       status: "PENDING_PAYMENT",
       paymentStatus: "UNPAID",
       totalPrice,
-      currency: products[0].currency,
+      currency,
       items: {
-        create: parsed.data.items.map((i) => {
-          const p = productById.get(i.productId)!;
-          return {
-            productId: p.id,
-            quantity: i.quantity,
-            unitPrice: p.price,
-            nameSnapshot: p.name,
-          };
-        }),
+        create: products.map((p) => ({
+          productId: p.id,
+          quantity: quantityByProduct.get(p.id) ?? 0,
+          unitPrice: p.price,
+          nameSnapshot: p.name,
+        })),
       },
     },
   });
 
-  return res.status(201).json({
+  res.status(201).json({
     orderId: order.id,
+    totalPrice,
+    currency,
     message: "Order created. Proceed to payment.",
   });
-
-  // const session = await stripe.checkout.sessions.create({
-  //   mode: "payment",
-  //   success_url: env.STRIPE_SUCCESS_URL,
-  //   cancel_url: env.STRIPE_CANCEL_URL,
-  //   customer_email: (await prisma.user.findUnique({ where: { id: userId } }))
-  //     ?.email,
-  //   line_items,
-  //   metadata: {
-  //     orderId: order.id,
-  //   },
-  // });
-
-  // await prisma.order.update({
-  //   where: { id: order.id },
-  //   data: { stripeSessionId: session.id },
-  // });
-
-  // res.status(201).json({
-  //   orderId: order.id,
-  //   checkoutUrl: session.url,
-  // });
 }
