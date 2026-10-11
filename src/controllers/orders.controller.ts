@@ -56,6 +56,9 @@ async function findOrderOrThrow(rawId: unknown) {
 /** Marks an order as paid and placed (manual payment confirmation). */
 export async function adminPlaceOrder(req: Request, res: Response): Promise<void> {
   const order = await findOrderOrThrow(req.params.id);
+  if (order.status === "CANCELLED") {
+    throw new ApiError(400, "A cancelled order cannot be placed");
+  }
 
   const updated = await prisma.order.update({
     where: { id: order.id },
@@ -81,10 +84,16 @@ export async function adminApproveOrder(req: Request, res: Response): Promise<vo
 
 export async function rejectPayment(req: Request, res: Response): Promise<void> {
   const order = await findOrderOrThrow(req.params.id);
+  if (order.paymentStatus === "PAID") {
+    throw new ApiError(400, "A verified payment cannot be rejected");
+  }
+  if (order.status === "CANCELLED") {
+    throw new ApiError(400, "Order is already cancelled");
+  }
 
   const updated = await prisma.order.update({
     where: { id: order.id },
-    data: { paymentStatus: "UNPAID", status: "PENDING_PAYMENT" },
+    data: { paymentStatus: "UNPAID", status: "CANCELLED" },
     include: adminOrderInclude,
   });
   res.json({ order: updated });
