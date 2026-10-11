@@ -1,3 +1,11 @@
+## [1.3.1](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.3.0...v1.3.1) (2026-10-11)
+
+
+### Bug Fixes
+
+* cancel order when admin rejects payment ([f0186f1](https://github.com/vaibhavd2103/rreva-care-backend/commit/f0186f19050ab1391d1c0817abdf4007bed3e724))
+* harden API, enable strict TS/ESLint, add Docker and free Render deploy ([0ac25a9](https://github.com/vaibhavd2103/rreva-care-backend/commit/0ac25a9b4a1142afa758e66c30d24b866278cabd))
+
 # [1.3.0](https://github.com/vaibhavd2103/rreva-care-backend/compare/v1.2.2...v1.3.0) (2026-04-12)
 
 
