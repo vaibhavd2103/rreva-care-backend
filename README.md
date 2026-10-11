@@ -83,7 +83,7 @@ npm run seed
 ### 5) Start server
 ```bash
 npm run dev
-# API on http://localhost:4000
+# API on http://localhost:4000 (PORT in .env)
 ```
 
 ---
@@ -96,7 +96,7 @@ npm run dev
 
 ### User
 - `GET /api/users/me` (auth)
-- `PUT /api/users/me/profile-photo` (auth, multipart/form-data `file`)
+- `POST /api/users/update` (auth, updates the authenticated user: name, address, phoneNumber)
 
 ### Products
 - `GET /api/products` (public)
@@ -125,3 +125,35 @@ npm run dev
   ```
   Then put the printed `whsec_...` into `STRIPE_WEBHOOK_SECRET`.
 - Admin receives an email after payment succeeds and the order is marked `PLACED`.
+
+---
+
+## Quality gates
+```bash
+npm run typecheck   # tsc --noEmit, strict mode
+npm run lint        # eslint, typescript-eslint strictTypeChecked
+npm run build       # prisma generate + tsc
+```
+
+## Docker
+```bash
+docker build -t rreva-backend .
+docker run --rm -p 4000:4000 --env-file .env rreva-backend
+```
+Health endpoints: `GET /health` (liveness), `GET /health/ready` (checks the database).
+Seed the admin once: `docker run --rm --env-file .env rreva-backend node dist/scripts/seed.js`.
+Push the schema once: `docker run --rm --env-file .env rreva-backend npx prisma db push --skip-generate`.
+
+## Free deployment (Render + MongoDB Atlas + Cloudinary)
+1. **Database** – create a free MongoDB Atlas **M0** cluster (Atlas runs a replica set, which Prisma needs),
+   allow access from `0.0.0.0/0`, and copy the connection string with a database name, e.g.
+   `mongodb+srv://USER:PASS@cluster0.xxxx.mongodb.net/rreva?retryWrites=true&w=majority`.
+2. **Schema + admin** – from your machine with that `DATABASE_URL` in `.env`: `npm run prisma:push && npm run seed`.
+3. **Render** – New → Blueprint → select this repo (`render.yaml`, plan `free`, Docker runtime).
+   Fill in `DATABASE_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` and (optionally) the Cloudinary keys.
+   `JWT_SECRET` is generated automatically. Health check path is `/health`.
+4. Optional: set `CORS_ORIGINS` to your frontend origin(s), comma separated.
+
+Notes: Render's free web service sleeps after ~15 min idle (first request takes ~30–60 s to wake).
+Stripe, SMTP and Cloudinary are optional – without Cloudinary, product creation works but image uploads return 503.
+Checkout creates a `PENDING_PAYMENT` order; an admin confirms payment via `PATCH /api/admin/orders/:id/place`.

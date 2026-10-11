@@ -1,38 +1,82 @@
+import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
-import { ApiError } from "../utils/http";
+import {
+  ApiError,
+  parseObjectId,
+  parseOrThrow,
+  requireUser,
+} from "../utils/http";
 import {
   deleteFromCloudinary,
   uploadBufferToCloudinary,
 } from "../services/cloudinary";
+
+// multipart/form-data sends everything as strings, so booleans and arrays need
+// explicit normalisation (z.coerce.boolean() would turn "false" into true).
+const formBoolean = z.preprocess((v) => {
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "true" || s === "1") return true;
+    if (s === "false" || s === "0") return false;
+  }
+  return v;
+}, z.boolean());
+
+/** Accepts string[], a single string, or a JSON-encoded array string. */
+const formStringArray = z.preprocess((v) => {
+  if (typeof v !== "string") return v;
+  const trimmed = v.trim();
+  if (trimmed.startsWith("[")) {
+    try {
+      return JSON.parse(trimmed) as unknown;
+    } catch {
+      return v;
+    }
+  }
+  return trimmed === "" ? [] : [trimmed];
+}, z.array(z.string()));
 
 const CreateSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(10),
   price: z.coerce.number().int().positive(),
   mrp: z.coerce.number().int().positive(),
-  currency: z.string().min(3).max(3).default("INR"),
-  isActive: z.coerce.boolean().optional(),
-  ingredients: z.array(z.string()).optional().default([]),
-  benefits: z.array(z.string()).optional().default([]),
-  howToUse: z.array(z.string()).optional().default([]),
+  currency: z.string().length(3).default("INR"),
+  isActive: formBoolean.optional(),
+  ingredients: formStringArray.optional().default([]),
+  benefits: formStringArray.optional().default([]),
+  howToUse: formStringArray.optional().default([]),
 });
 
-const UpdateSchema = CreateSchema.partial().extend({
+const UpdateSchema = z.object({
+  name: CreateSchema.shape.name.optional(),
+  description: CreateSchema.shape.description.optional(),
+  price: CreateSchema.shape.price.optional(),
+  mrp: CreateSchema.shape.mrp.optional(),
+  currency: z.string().length(3).optional(),
+  isActive: formBoolean.optional(),
+  ingredients: formStringArray.optional(),
+  benefits: formStringArray.optional(),
+  howToUse: formStringArray.optional(),
   // The client echoes back whichever existing Cloudinary URLs it wants to
   // keep. Omitting this field entirely means "don't touch images at all".
-  // multipart/form-data may send a single string or a repeated array —
-  // the transform normalises both into string[] | undefined.
-  existingImageUrls: z
-    .union([z.array(z.string().url()), z.string().url()])
-    .optional()
-    .transform((val) => {
-      if (val === undefined) return undefined;
-      return Array.isArray(val) ? val : [val];
-    }),
+  existingImageUrls: z.preprocess(
+    (v) => (typeof v === "string" ? [v] : v),
+    z.array(z.string().url()).optional(),
+  ),
 });
 
-export async function listProducts(_req: any, res: any) {
+const ReviewSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().min(1).max(1000).optional(),
+});
+
+function uploadedFiles(req: Request): Express.Multer.File[] {
+  return Array.isArray(req.files) ? req.files : [];
+}
+
+export async function listProducts(_req: Request, res: Response): Promise<void> {
   const products = await prisma.product.findMany({
     where: { isActive: true },
     orderBy: { createdAt: "desc" },
@@ -41,166 +85,122 @@ export async function listProducts(_req: any, res: any) {
   res.json({ products });
 }
 
-export async function getProduct(req: any, res: any) {
-  const { id } = req.params;
+export async function getProduct(req: Request, res: Response): Promise<void> {
+  const id = parseObjectId(req.params.id, "Product");
 
   const product = await prisma.product.findUnique({ where: { id } });
-  if (!product || !product.isActive) {
-    throw new ApiError(404, "Product not found");
-  }
+  if (!product?.isActive) throw new ApiError(404, "Product not found");
 
   res.json({ product });
 }
 
-export async function createProduct(req: any, res: any) {
-  const parsed = CreateSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new ApiError(400, "Invalid payload", parsed.error.flatten());
-  }
+export async function createProduct(req: Request, res: Response): Promise<void> {
+  const data = parseOrThrow(CreateSchema, req.body);
+  const files = uploadedFiles(req);
 
-  const files = req.files as Express.Multer.File[] | undefined;
-
-  let imageUrls: string[] = [];
-
-  if (files && files.length > 0) {
-    imageUrls = await Promise.all(
-      files.map((file) => uploadBufferToCloudinary(file.buffer, "products")),
-    );
-  }
+  const imageUrls = await Promise.all(
+    files.map((file) => uploadBufferToCloudinary(file.buffer, "products")),
+  );
 
   const product = await prisma.product.create({
-    data: {
-      ...(parsed.data as any),
-      imageUrls,
-    },
+    data: { ...data, imageUrls },
   });
 
   res.status(201).json({ product });
 }
 
-export async function updateProduct(req: any, res: any) {
-  const { id } = req.params;
+export async function updateProduct(req: Request, res: Response): Promise<void> {
+  const id = parseObjectId(req.params.id, "Product");
+  const { existingImageUrls, ...fields } = parseOrThrow(UpdateSchema, req.body);
 
-  const parsed = UpdateSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new ApiError(400, "Invalid payload", parsed.error.flatten());
-  }
+  const current = await prisma.product.findUnique({
+    where: { id },
+    select: { imageUrls: true },
+  });
+  if (!current) throw new ApiError(404, "Product not found");
 
-  const { existingImageUrls, ...fields } = parsed.data;
-  console.log("parsed update product:", parsed.data);
+  const files = uploadedFiles(req);
+  let imageUrls: string[] | undefined;
 
-  const files = req.files as Express.Multer.File[] | undefined;
-  const hasNewFiles = files && files.length > 0;
-  const hasImageUpdate = existingImageUrls !== undefined || hasNewFiles;
+  if (existingImageUrls !== undefined || files.length > 0) {
+    const keptUrls = existingImageUrls ?? current.imageUrls;
 
-  let imageUrls: string[] | undefined = undefined;
+    // Any URL that was stored but is no longer kept was removed by the client.
+    const deletedUrls = current.imageUrls.filter((url) => !keptUrls.includes(url));
 
-  if (hasImageUpdate) {
-    const keptUrls = existingImageUrls ?? [];
-
-    // Fetch the current product to diff which URLs were removed.
-    const current = await prisma.product.findUnique({
-      where: { id },
-      select: { imageUrls: true },
-    });
-
-    if (!current) throw new ApiError(404, "Product not found");
-
-    // Any URL that was stored but is no longer in keptUrls was deleted.
-    const deletedUrls = current.imageUrls.filter(
-      (url) => !keptUrls.includes(url),
+    const uploadedUrls = await Promise.all(
+      files.map((file) => uploadBufferToCloudinary(file.buffer, "products")),
     );
 
-    // Fire-and-forget Cloudinary deletes — don't block the response on this.
-    // If a delete fails it's non-critical; you can log and handle separately.
+    // Best-effort cleanup – don't block the response or fail the request.
     if (deletedUrls.length > 0) {
-      Promise.all(deletedUrls.map(deleteFromCloudinary)).catch((err) =>
-        console.error("Cloudinary cleanup failed:", err),
-      );
+      Promise.all(deletedUrls.map(deleteFromCloudinary)).catch((err: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("Cloudinary cleanup failed:", err);
+      });
     }
-
-    const uploadedUrls = hasNewFiles
-      ? await Promise.all(
-          files!.map((file) =>
-            uploadBufferToCloudinary(file.buffer, "products"),
-          ),
-        )
-      : [];
 
     imageUrls = [...keptUrls, ...uploadedUrls];
   }
 
-  try {
-    const updateData: any = { ...fields };
-    if (imageUrls !== undefined) {
-      updateData.imageUrls = imageUrls;
-    }
+  const product = await prisma.product.update({
+    where: { id },
+    data: { ...fields, ...(imageUrls ? { imageUrls } : {}) },
+  });
 
-    const product = await prisma.product.update({
-      where: { id },
-      data: updateData,
-    });
-
-    res.json({ product });
-  } catch {
-    throw new ApiError(404, "Product not found");
-  }
+  res.json({ product });
 }
 
-export async function deleteProduct(req: any, res: any) {
-  const { id } = req.params;
+export async function deleteProduct(req: Request, res: Response): Promise<void> {
+  const id = parseObjectId(req.params.id, "Product");
 
-  try {
-    await prisma.product.update({
-      where: { id },
-      data: { isActive: false },
-    });
-    res.status(204).send();
-  } catch {
-    throw new ApiError(404, "Product not found");
-  }
+  const existing = await prisma.product.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+  if (!existing) throw new ApiError(404, "Product not found");
+
+  // Soft delete keeps historical orders/reviews intact.
+  await prisma.product.update({ where: { id }, data: { isActive: false } });
+  res.status(204).send();
 }
 
-export async function updateProductReview(req: any, res: any) {
-  const { id } = req.params;
-  const userId = req.user.id;
-  const ReviewSchema = z.object({
-    rating: z.number().int().min(1).max(5),
-    comment: z.string().min(1).max(1000).optional(),
+export async function updateProductReview(req: Request, res: Response): Promise<void> {
+  const productId = parseObjectId(req.params.id, "Product");
+  const { id: userId } = requireUser(req);
+  const { rating, comment } = parseOrThrow(ReviewSchema, req.body);
+
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    select: { isActive: true },
   });
-  const parsed = ReviewSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new ApiError(400, "Invalid payload", parsed.error.flatten());
-  }
-  const { rating, comment } = parsed.data;
-  const review = await prisma.review.findUnique({
-    where: { id, userId },
+  if (!product?.isActive) throw new ApiError(404, "Product not found");
+
+  const existing = await prisma.review.findFirst({
+    where: { productId, userId },
+    select: { id: true },
   });
-  if (review) {
-    throw new ApiError(400, "Review already exists");
-  }
-  const newReview = await prisma.review.create({
-    data: {
-      productId: id,
-      userId,
-      rating,
-      comment,
-    },
+  if (existing) throw new ApiError(400, "Review already exists");
+
+  const review = await prisma.review.create({
+    data: { productId, userId, rating, comment },
   });
-  res.status(201).json({ review: newReview });
+  res.status(201).json({ review });
 }
 
-export async function getProductReviews(req: any, res: any) {
-  const { id } = req.params;
+export async function getProductReviews(req: Request, res: Response): Promise<void> {
+  const productId = parseObjectId(req.params.id, "Product");
   const reviews = await prisma.review.findMany({
-    where: { productId: id },
+    where: { productId },
+    orderBy: { createdAt: "desc" },
     include: { user: { select: { id: true, name: true } } },
   });
   res.json({ reviews });
 }
 
-export async function getReviews(req: any, res: any) {
+export async function getReviews(_req: Request, res: Response): Promise<void> {
   const reviews = await prisma.review.findMany({
+    orderBy: { createdAt: "desc" },
     include: { user: { select: { id: true, name: true } } },
   });
   res.json({ reviews });

@@ -1,98 +1,50 @@
-import { ApiError } from "../utils/http";
-import { prisma } from "../db/prisma";
-import { uploadBufferToCloudinary } from "../services/cloudinary";
+import type { Request, Response } from "express";
 import { z } from "zod";
+import { prisma } from "../db/prisma";
+import { ApiError, parseOrThrow, requireUser } from "../utils/http";
 
 const UpdateUserSchema = z.object({
-  userId: z.string(),
   name: z.string().min(1).optional(),
   address: z.string().min(1).optional(),
   phoneNumber: z.string().min(10).optional(),
 });
 
-export async function getMe(req: any, res: any) {
-  const userId = req.user.id;
+const userSelect = {
+  id: true,
+  email: true,
+  role: true,
+  name: true,
+  profileImageUrl: true,
+  address: true,
+  phoneNumber: true,
+  createdAt: true,
+} as const;
+
+export async function getMe(req: Request, res: Response): Promise<void> {
+  const { id } = requireUser(req);
 
   const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      role: true,
-      name: true,
-      profileImageUrl: true,
-      createdAt: true,
-    },
+    where: { id },
+    select: userSelect,
   });
 
   if (!user) throw new ApiError(404, "User not found");
   res.json({ user });
 }
 
-// export async function uploadProfilePhoto(req: any, res: any) {
-//   const userId = req.user.id;
-//   const file = req.file as Express.Multer.File | undefined;
+export async function updateProfile(req: Request, res: Response): Promise<void> {
+  // Always operate on the authenticated user – never trust a user id from the body.
+  const { id } = requireUser(req);
+  const data = parseOrThrow(UpdateUserSchema, req.body);
 
-//   if (!file)
-//     throw new ApiError(400, 'Missing file (multipart/form-data field "file")');
+  const exists = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+  if (!exists) throw new ApiError(404, "User not found");
 
-//   // Basic content-type check
-//   if (!file.mimetype.startsWith("image/")) {
-//     throw new ApiError(400, "Only image uploads are allowed");
-//   }
-
-//   const result = await new Promise<{ secure_url: string }>(
-//     (resolve, reject) => {
-//       const stream = cloudinary.uploader.upload_stream(
-//         {
-//           folder: "commerce/profile-photos",
-//           resource_type: "image",
-//           transformation: [
-//             { width: 512, height: 512, crop: "fill", gravity: "face" },
-//           ],
-//         },
-//         (err, uploadResult) => {
-//           if (err || !uploadResult) return reject(err);
-//           resolve(uploadResult as any);
-//         },
-//       );
-//       stream.end(file.buffer);
-//     },
-//   );
-
-//   const updated = await prisma.user.update({
-//     where: { id: userId },
-//     data: { profileImageUrl: result.secure_url },
-//     select: {
-//       id: true,
-//       email: true,
-//       role: true,
-//       name: true,
-//       profileImageUrl: true,
-//     },
-//   });
-
-//   res.json({ user: updated });
-// }
-
-export async function updateProfile(req: any, res: any) {
-  const body = UpdateUserSchema.safeParse(req.body);
-  if (!body.success)
-    throw new ApiError(400, "Invalid payload", body.error.flatten());
-  const { userId, name, address, phoneNumber } = body.data;
-  const updated = await prisma.user.update({
-    where: { id: userId },
-    data: { name, address, phoneNumber },
-    select: {
-      id: true,
-      email: true,
-      role: true,
-      name: true,
-      profileImageUrl: true,
-      address: true,
-      phoneNumber: true,
-    },
+  const user = await prisma.user.update({
+    where: { id },
+    data,
+    select: userSelect,
   });
 
-  res.json({ user: updated });
+  res.json({ user });
 }
